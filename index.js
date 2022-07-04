@@ -7,9 +7,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-const assert = require('assert');
-const usb = require('usb');
-const EventEmitter = require('events');
+ import assert from 'assert';
+ import { usb } from 'usb';
+
+ const EventEmitter = require('events');
 
 function findDevices(vid, pid) {
   return usb.getDeviceList()
