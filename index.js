@@ -7,8 +7,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-const assert = require('assert');
-const usb = require('usb');
+import assert from 'assert';
+import { usb } from 'usb';
+
 const EventEmitter = require('events');
 
 function findDevices(vid, pid) {
@@ -72,7 +73,7 @@ function setBaudrate(device, baud) {
     .then(() => vendorWrite(device, 9, 0));
 }
 
-class UsbSerial extends EventEmitter {
+export default class UsbSerial extends EventEmitter {
   constructor(opts) {
     super();
     const port = opts.port || 0;
@@ -139,5 +140,3 @@ class UsbSerial extends EventEmitter {
     this.outEp.transfer(data);
   }
 }
-
-module.exports = UsbSerial;
