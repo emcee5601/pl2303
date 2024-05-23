@@ -16,33 +16,13 @@ const SupportedBaudrates = [
   921600, 1228800, 2457600, 3000000, 6000000,
 ];
 
-// // find an endpoint of the given transfer type and direction
-// function findEp(iface, transferType, direction) {
-//   const eps = iface.endpoints.filter(e => e.transferType === transferType && e.direction === direction);
-//   assert(eps.length === 1);
-//   return eps[0];
-// }
-
-// function controlTransfer(device, requestType, request, value, index, dataOrLength) {
-//   return new Promise((resolve, reject) => {
-//     device.controlTransfer(requestType, request, value, index, dataOrLength,
-//       (err, data) => {
-//         if (err) {
-//           reject(err);
-//           return;
-//         }
-//         resolve(data);
-//       });
-//   });
-// }
-
 async function vendorRead(device, value, index) {
   const buffer = await device.controlTransferIn({
     requestType: 'vendor',
     recipient: 'device',
     request: 0x01,
-    index,
-    value,
+	value,
+	index,
   }, 1);
 
   return buffer[0];
@@ -50,11 +30,11 @@ async function vendorRead(device, value, index) {
 
 async function vendorWrite(device, value, index) {
   await device.controlTransferOut({
-    requestType: 'vendor',
+    requestType: 'class',
     recipient: 'device',
     request: 0x01,
-    index,
     value,
+    index,
   });
 }
 
@@ -64,13 +44,12 @@ async function setBaudrate(device, baud) {
   const list = SupportedBaudrates.slice().sort((a, b) => Math.abs(a - baud) - Math.abs(b - baud));
   const newBaud = list[0];
   await device.controlTransferIn({
-    requestType: 'vendor',
-    recipient: 'device',
-    request: 0x01,
-    index: 0,
-    value: 0,
+    requestType: 'class',
+    recipient: 'interface',
+    request: 0x21,
+	value: 0,
+	index: 0,
   }, 7);
-  // device, 0xa1, 0x21, 0, 0, 7)
 
   console.log('Setting baud rate to', newBaud);
 
@@ -81,13 +60,12 @@ async function setBaudrate(device, baud) {
   parameters.setUint8(5, 0); // no parity
   parameters.setUint8(6, 8); // 8 bit characters
   await device.controlTransferOut({
-    requestType: 'vendor',
-    recipient: 'device',
-    request: 0x01,
-    index: 0,
-    value: 0,
+    requestType: 'class',
+    recipient: 'interface',
+    request: 0x20,
+	value: 0,
+	index: 0,
   }, parameters);
-  // device, 0x21, 0x20, 0, 0, parameters);
 
   await vendorWrite(device, 0x0, 0x0); // no flow control
   await vendorWrite(device, 8, 0); // reset upstream data pipes
@@ -100,36 +78,15 @@ export default class UsbSerial extends EventTarget {
     const bitrate = opts.baudRate || 9600;
     this.device = device;
     assert(this.device.deviceClass !== 0x02);
-    this.device.open();
-    assert(this.device.configuration.interfaces.length === 1);
 
     (async () => {
+      await this.device.open();
+      assert(this.device.configuration.interfaces.length === 1);
+
       [this.iface] = this.device.configuration.interfaces;
       console.log('Claiming interface', this.iface.interfaceNumber);
       await this.device.claimInterface(this.iface.interfaceNumber);
 
-      // [this.inEndpoint, this.outEndpoint] = this.usbDevice.iface.alternate.endpoints;
-
-      // const intEp = findEp(this.iface, usb.LIBUSB_TRANSFER_TYPE_INTERRUPT, 'in');
-      // intEp.on('data', (data) => {
-      //   this.emit('status', data);
-      // });
-      // intEp.on('error', (err) => {
-      //   this.emit('error', err);
-      // });
-      // intEp.startPoll();
-      // const inEp = findEp(this.iface, usb.LIBUSB_TRANSFER_TYPE_BULK, 'in');
-      // inEp.on('data', (data) => {
-      //   this.emit('data', data);
-      // });
-      // inEp.on('error', (err) => {
-      //   this.emit('error', err);
-      // });
-      // const outEp = findEp(this.iface, usb.LIBUSB_TRANSFER_TYPE_BULK, 'out');
-      // outEp.on('error', (err) => {
-      //   this.emit('error', err);
-      // });
-      // this.outEp = outEp;
       await vendorRead(this.device, 0x8484, 0);
       await vendorWrite(this.device, 0x0404, 0);
       await vendorRead(this.device, 0x8484, 0);
@@ -142,7 +99,6 @@ export default class UsbSerial extends EventTarget {
       await vendorWrite(this.device, 1, 0);
       await vendorWrite(this.device, 2, 0x44);
       await setBaudrate(this.device, bitrate);
-      // await inEp.startPoll())
 
       this.isClosing = false;
       this.readLoop();
@@ -159,7 +115,7 @@ export default class UsbSerial extends EventTarget {
     let result;
 
     try {
-      result = await this.device.transferIn(1, 64);
+      result = await this.device.transferIn(3, 64);
     } catch (error) {
       if (error.message.indexOf('LIBUSB_TRANSFER_NO_DEVICE')) {
         console.log('Device disconnected');
@@ -184,16 +140,16 @@ export default class UsbSerial extends EventTarget {
   close(cb) {
     this.isClosing = true;
     setTimeout(async () => {
-      await this.device.releaseInterface(0);
-      await this.device.close();
+      try {
+        await this.device.releaseInterface(0);
+        await this.device.close();
+      } catch (err) {
+        console.log('Error while closing:', err);
+      }
       return cb();
     }, 2000);
   }
 
-  // send(data) {
-  //   assert(data instanceof Buffer);
-  //   this.outEp.transfer(data);
-  // }
   write(data, cb) {
     this.device.transferOut(2, data).then(() => {
       cb();
