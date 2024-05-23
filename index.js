@@ -21,8 +21,8 @@ async function vendorRead(device, value, index) {
     requestType: 'vendor',
     recipient: 'device',
     request: 0x01,
-	value,
-	index,
+    value,
+    index,
   }, 1);
 
   return buffer[0];
@@ -47,8 +47,8 @@ async function setBaudrate(device, baud) {
     requestType: 'class',
     recipient: 'interface',
     request: 0x21,
-	value: 0,
-	index: 0,
+    value: 0,
+    index: 0,
   }, 7);
 
   console.log('Setting baud rate to', newBaud);
@@ -63,8 +63,8 @@ async function setBaudrate(device, baud) {
     requestType: 'class',
     recipient: 'interface',
     request: 0x20,
-	value: 0,
-	index: 0,
+    value: 0,
+    index: 0,
   }, parameters);
 
   await vendorWrite(device, 0x0, 0x0); // no flow control
