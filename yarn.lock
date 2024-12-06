@@ -509,6 +509,11 @@ doctrine@^3.0.0:
   dependencies:
     esutils "^2.0.2"
 
+dom@^0.0.3:
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/dom/-/dom-0.0.3.tgz#16e0c225a0553d8e4362cc4bcd78d8fde59af67b"
+  integrity sha512-Uzda1zIAXO8JG2fm6IbJcdzBrRaC5Q308HTIjCXCQHh7ZVACJOeQzYYvd99plJ2/HUpZQk9IxNI/Y+QrO6poIQ==
+
 emoji-regex@^10.3.0:
   version "10.4.0"
   resolved "https://registry.yarnpkg.com/emoji-regex/-/emoji-regex-10.4.0.tgz#03553afea80b3975749cfcb36f776ca268e413d4"

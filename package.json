@@ -5,7 +5,8 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
-    "lint": "eslint --cache --format=node_modules/eslint-formatter-pretty/index.js ."
+    "lint": "eslint --cache --format=node_modules/eslint-formatter-pretty/index.js .",
+    "build": "tsc -b"
   },
   "author": "emcee5601",
   "contributors": [
@@ -21,6 +22,7 @@
     "@eslint/js": "^9.16.0",
     "@types/node": "^22.10.1",
     "@types/w3c-web-usb": "^1.0.10",
+    "dom": "^0.0.3",
     "globals": "^15.13.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.17.0",
