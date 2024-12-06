@@ -70,11 +70,11 @@ async function setBaudrate(device:USBDevice, baud:number) {
   await vendorWrite(device, 9, 0);
 }
 
-export default class UsbSerial extends EventTarget {
+export default class ProlificUsbSerial extends EventTarget {
   private device: USBDevice;
   private iface: USBInterface;
   private isClosing: boolean;
-  constructor(device:USBDevice, opts) {
+  constructor(device:USBDevice, opts: { baudRate: number; }) {
     super();
     const bitrate = opts.baudRate || 9600;
     this.device = device;
