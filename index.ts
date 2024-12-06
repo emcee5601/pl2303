@@ -156,8 +156,7 @@ export default class ProlificUsbSerial extends EventTarget {
         return new Promise((resolve, reject) => {
             this.device.transferOut(2, data).then(() => {
                 resolve({status: "ok", bytesWritten: data.byteLength});
-            }, (err) => reject(err))
-
+            }).catch((err) => reject(err))
         })
     }
 }
