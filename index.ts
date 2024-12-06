@@ -7,8 +7,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-import assert from 'assert';
-
 const SupportedBaudrates = [
   75, 150, 300, 600, 1200, 1800, 2400, 3600,
   4800, 7200, 9600, 14400, 19200, 28800, 38400,
@@ -16,7 +14,7 @@ const SupportedBaudrates = [
   921600, 1228800, 2457600, 3000000, 6000000,
 ];
 
-async function vendorRead(device, value, index) {
+async function vendorRead(device:USBDevice, value: number, index:number) {
   const buffer = await device.controlTransferIn({
     requestType: 'vendor',
     recipient: 'device',
@@ -28,7 +26,7 @@ async function vendorRead(device, value, index) {
   return buffer[0];
 }
 
-async function vendorWrite(device, value, index) {
+async function vendorWrite(device:USBDevice, value:number, index:number) {
   await device.controlTransferOut({
     requestType: 'class',
     recipient: 'device',
@@ -38,8 +36,8 @@ async function vendorWrite(device, value, index) {
   });
 }
 
-async function setBaudrate(device, baud) {
-  assert(baud <= 115200);
+async function setBaudrate(device:USBDevice, baud:number) {
+  // assert(baud <= 115200);
   // find the nearest supported bitrate
   const list = SupportedBaudrates.slice().sort((a, b) => Math.abs(a - baud) - Math.abs(b - baud));
   const newBaud = list[0];
@@ -73,15 +71,18 @@ async function setBaudrate(device, baud) {
 }
 
 export default class UsbSerial extends EventTarget {
-  constructor(device, opts) {
+  private device: USBDevice;
+  private iface: USBInterface;
+  private isClosing: boolean;
+  constructor(device:USBDevice, opts) {
     super();
     const bitrate = opts.baudRate || 9600;
     this.device = device;
-    assert(this.device.deviceClass !== 0x02);
+    // assert(this.device.deviceClass !== 0x02);
 
     (async () => {
       await this.device.open();
-      assert(this.device.configuration.interfaces.length === 1);
+      // assert(this.device.configuration.interfaces.length === 1);
 
       [this.iface] = this.device.configuration.interfaces;
       console.log('Claiming interface', this.iface.interfaceNumber);
@@ -101,7 +102,7 @@ export default class UsbSerial extends EventTarget {
       await setBaudrate(this.device, bitrate);
 
       this.isClosing = false;
-      this.readLoop();
+      await this.readLoop();
       this.dispatchEvent(new Event('ready'));
     })().catch((error) => {
       console.log('Error during PL2303 setup:', error);
@@ -112,7 +113,7 @@ export default class UsbSerial extends EventTarget {
   }
 
   async readLoop() {
-    let result;
+    let result: USBInTransferResult;
 
     try {
       result = await this.device.transferIn(3, 64);
@@ -133,11 +134,11 @@ export default class UsbSerial extends EventTarget {
     }
 
     if (!this.isClosing && this.device.opened) {
-      this.readLoop();
+      await this.readLoop();
     }
   }
 
-  close(cb) {
+  close(cb: () => void | PromiseLike<void>) {
     this.isClosing = true;
     setTimeout(async () => {
       try {
@@ -150,7 +151,7 @@ export default class UsbSerial extends EventTarget {
     }, 2000);
   }
 
-  write(data, cb) {
+  write(data: BufferSource, cb: (err?: undefined, msg?: null) => void) {
     this.device.transferOut(2, data).then(() => {
       cb();
     }, (err) => cb(err, null));

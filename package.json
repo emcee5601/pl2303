@@ -2,27 +2,35 @@
   "name": "pl2303",
   "version": "0.1.0",
   "description": "Prolific PL2303 user-space USB to serial adapter driver based on libusb",
-  "main": "index.js",
+  "main": "index.ts",
+  "type": "module",
   "scripts": {
-    "lint": "eslint --cache --format=node_modules/eslint-formatter-pretty ."
+    "lint": "eslint --cache --format=node_modules/eslint-formatter-pretty/index.js ."
   },
-  "author": "Gerrit Niezen <gerrit@tidepool.org>",
+  "author": "emcee5601",
   "contributors": [
+    "Gerrit Niezen <gerrit@tidepool.org>",
     "Andreas Gal"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tidepool-org/pl2303"
+    "url": "https://github.com/emcee5601/pl2303"
   },
   "dependencies": {
+    "@eslint/js": "^9.16.0",
+    "@types/node": "^22.10.1",
+    "@types/w3c-web-usb": "^1.0.10",
+    "globals": "^15.13.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.17.0",
     "usb": "2.11.0"
   },
   "devDependencies": {
     "core-js": "2.6.12",
     "eslint": "8.56.0",
     "eslint-config-airbnb": "18.2.1",
-    "eslint-formatter-pretty": "5.0.0",
+    "eslint-formatter-pretty": "^6.0.1",
     "eslint-plugin-import": "2.29.1"
   }
 }
