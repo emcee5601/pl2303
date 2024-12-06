@@ -115,7 +115,7 @@ export default class ProlificUsbSerial extends EventTarget {
         });
     }
 
-    async readLoop() {
+    private async readLoop() {
         this.device.transferIn(3, 64).then((result) => {
             if (result && result.data && result.data.byteLength) {
                 console.log(`Received ${result.data.byteLength} byte(s).`);
@@ -139,17 +139,21 @@ export default class ProlificUsbSerial extends EventTarget {
         })
     }
 
-    close(cb: () => void | PromiseLike<void>) {
+    async close() {
         this.isClosing = true;
-        setTimeout(async () => {
-            try {
-                await this.device.releaseInterface(0);
-                await this.device.close();
-            } catch (err) {
-                console.log('Error while closing:', err);
-            }
-            return cb();
-        }, 2000);
+        return new Promise<void>((resolve, reject) => {
+            setTimeout(async () => {
+                try {
+                    await this.device.releaseInterface(0);
+                    await this.device.close();
+                    resolve();
+                } catch (err) {
+                    console.log('Error while closing:', err);
+                    reject(err);
+                }
+            }, 2000);
+
+        }) 
     }
 
     async write(data: BufferSource): Promise<{ status: string, bytesWritten: number }> {
