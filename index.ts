@@ -128,6 +128,7 @@ export default class ProlificUsbSerial extends EventTarget {
         }).catch((error) => {
                 if (error.message.indexOf('LIBUSB_TRANSFER_NO_DEVICE')) {
                     console.log('Device disconnected');
+                    close(); // got some error, make sure we close it out so we don't keep hitting this error
                 } else {
                     console.log('Error reading data:', error);
                 }
