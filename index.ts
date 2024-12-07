@@ -153,10 +153,10 @@ export default class ProlificUsbSerial extends EventTarget {
                 }
             }, 2000);
 
-        }) 
+        })
     }
 
-    async write(data: BufferSource): Promise<{ status: string, bytesWritten: number }> {
+    async write(data: BufferSource): Promise<USBOutTransferResult> {
         return new Promise((resolve, reject) => {
             this.device.transferOut(2, data).then(() => {
                 resolve({status: "ok", bytesWritten: data.byteLength});
