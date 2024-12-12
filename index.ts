@@ -18,6 +18,13 @@ const SupportedBaudrates = [
 ];
 
 const READ_TIMEOUT_MS = 1000
+const WRITE_TIMEOUT_MS = 5000
+
+const SET_CONTROL_REQUEST = 0x22;
+
+/* SET_CONTROL_REQUEST */
+const CONTROL_DTR = 0x01;
+const CONTROL_RTS = 0x02;
 
 const VENDOR_READ_REQUEST = 0x01;
 const VENDOR_WRITE_REQUEST = 0x01;
@@ -32,55 +39,6 @@ const FLUSH_TX_REQUEST = 0x09;
 const RESET_HXN_RX_PIPE = 1;
 const RESET_HXN_TX_PIPE = 2;
 
-async function controlTransferInWithTimeout({device, requestType, recipient, request, value, index}: {
-                                                device: USBDevice,
-                                                requestType: USBRequestType,
-                                                recipient: USBRecipient,
-                                                request: number,
-                                                value: number,
-                                                index: number
-                                            },
-                                            expectedBytes: number,
-                                            timeout: number = READ_TIMEOUT_MS): Promise<ArrayBufferLike> {
-    return new Promise((resolve, reject) => {
-        const abortController = new AbortController();
-        const abortListener = ({target}: { target: any }) => {
-            abortController.signal.removeEventListener('abort', abortListener);
-            reject(target.reason)
-        }
-        abortController.signal.addEventListener('abort', abortListener);
-        setTimeout(() => {
-            abortController.abort("controlTransferIn timed out")
-        }, timeout);
-
-        device.controlTransferIn({requestType, recipient, request, value, index}, expectedBytes).then(result => {
-            if (abortController.signal.aborted) {
-                reject(`aborted, but we finally got our result: ${JSON.stringify(result)}`);
-            } else if (result.data?.byteLength === expectedBytes) {
-                resolve(result.data.buffer);
-            } else {
-                reject("controlTransferIn succeeded, but did not receive expected number of bytes")
-            }
-        }).catch(reject)
-    })
-}
-
-async function testHxStatus(device: USBDevice): Promise<boolean> {
-    return controlTransferInWithTimeout({
-        device,
-        requestType: 'vendor',
-        recipient:'device',
-        request: VENDOR_READ_REQUEST,
-        value:0x8080,
-        index: 0
-    }, 1)
-        .then(() => {
-            return true;
-        }).catch(() => {
-            // ignore
-            return false;
-        })
-}
 
 enum DeviceType {
     DEVICE_TYPE_01,
@@ -98,12 +56,99 @@ export default class ProlificUsbSerial extends EventTarget {
     private writeEndpoint: USBEndpoint | undefined;
     private deviceType: DeviceType = DeviceType.DEVICE_TYPE_HX;
     private currentFlowControl: FlowControl = FlowControl.NONE;
+    private currentControlLinesValue: number = 0;
 
     constructor(device: USBDevice, opts: { baudRate: number }) {
         super();
         this.bitrate = opts.baudRate;
         this.device = device;
         // assert(this.device.deviceClass !== 0x02);
+    }
+
+    async controlTransferInWithTimeout({requestType, recipient, request, value, index}: {
+                                           requestType: USBRequestType,
+                                           recipient: USBRecipient,
+                                           request: number,
+                                           value: number,
+                                           index: number
+                                       },
+                                       expectedBytes: number,
+                                       timeout: number = READ_TIMEOUT_MS): Promise<ArrayBufferLike> {
+        return new Promise((resolve, reject) => {
+            const abortController = new AbortController();
+            const abortListener:EventListener = (event) => {
+                abortController.signal.removeEventListener('abort', abortListener);
+                reject(event.target)
+            }
+            abortController.signal.addEventListener('abort', abortListener);
+            setTimeout(() => {
+                abortController.abort("controlTransferIn timed out")
+            }, timeout);
+
+            this.device.controlTransferIn({
+                requestType,
+                recipient,
+                request,
+                value,
+                index
+            }, expectedBytes).then(result => {
+                if (abortController.signal.aborted) {
+                    reject(`aborted, but we finally got our result: ${JSON.stringify(result)}`);
+                } else if (result.data?.byteLength === expectedBytes) {
+                    resolve(result.data.buffer);
+                } else {
+                    reject("controlTransferIn succeeded, but did not receive expected number of bytes")
+                }
+            }).catch(reject)
+        })
+    }
+
+    async controlTransferOutWithTimeout({requestType, recipient, request, value, index, data}: {
+                                            requestType: USBRequestType,
+                                            recipient: USBRecipient,
+                                            request: number,
+                                            value: number,
+                                            index: number,
+                                            data: BufferSource|undefined
+                                        },
+                                        timeout: number = WRITE_TIMEOUT_MS): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const abortController = new AbortController();
+            const abortListener:EventListener = (event) => {
+                abortController.signal.removeEventListener('abort', abortListener);
+                reject(event.target)
+            }
+            abortController.signal.addEventListener('abort', abortListener);
+            setTimeout(() => {
+                abortController.abort("controlTransferOut timed out")
+            }, timeout);
+
+            this.device.controlTransferOut({requestType, recipient, request, value, index}, data).then(result => {
+                if (abortController.signal.aborted) {
+                    reject(`aborted, but we finally got our result: ${JSON.stringify(result)}`);
+                } else if (result.bytesWritten === (data? data.byteLength: 0)) {
+                    resolve(result.status);
+                } else {
+                    reject("controlTransferOut succeeded, but did not write expected number of bytes")
+                }
+            }).catch(reject)
+        })
+    }
+
+    async testHxStatus(): Promise<boolean> {
+        return this.controlTransferInWithTimeout({
+            requestType: 'vendor',
+            recipient: 'device',
+            request: VENDOR_READ_REQUEST,
+            value: 0x8080,
+            index: 0
+        }, 1)
+            .then(() => {
+                return true;
+            }).catch(() => {
+                // ignore
+                return false;
+            })
     }
 
     async vendorRead(value: number, index: number) {
@@ -127,8 +172,10 @@ export default class ProlificUsbSerial extends EventTarget {
             request: request,
             value,
             index,
-        });
+        }).then(result => {console.log(`vendorWrite success ${JSON.stringify(result)}`)})
+            .catch(reason => {console.warn(`vendorWrite failed ${reason}`)});
     }
+
 
     async setBaudRate(baud: number) {
         // assert(baud <= 115200);
@@ -231,7 +278,7 @@ export default class ProlificUsbSerial extends EventTarget {
             if (this.device.deviceClass === 0x02 || maxPacketSize != 64) {
                 this.deviceType = DeviceType.DEVICE_TYPE_01;
             } else if (usbVersion === 0x200) {
-                const hxStatus = await testHxStatus(this.device);
+                const hxStatus = await this.testHxStatus();
                 if (hxStatus && deviceVersion === 0x300) {
                     this.deviceType = DeviceType.DEVICE_TYPE_T;
                 } else if (hxStatus && deviceVersion === 0x500) {
@@ -245,12 +292,19 @@ export default class ProlificUsbSerial extends EventTarget {
 
             await this.resetDevice()
             await this.doBlackMagic()
-            // await this.setControlLines(currentControlLinesValue) // todo: implement this
             await this.setFlowControl(this.currentFlowControl)
+            await this.setControlLines(this.currentControlLinesValue)
             await this.setBaudRate(this.bitrate);
 
             this.isClosing = false;
             await this.readLoop();
+
+            await this.setFlowControl(FlowControl.RTS_CTS)
+            await this.setControlLines(0xff) // set all the lines
+            // maybe these are needed?
+            // await this.setRTS(true) // CTS
+            // await this.setDTR(true) // DSR
+
             this.dispatchEvent(new Event('ready'));
         })().catch((error) => {
             console.log('Error during PL2303 setup:', error);
@@ -273,14 +327,16 @@ export default class ProlificUsbSerial extends EventTarget {
                 this.dispatchEvent(new CustomEvent('data', {
                     detail: uint8buffer.slice(0),
                 }));
+            } else {
+                console.log("transferIn got no result, no result data, or data was empty")
             }
 
         }).catch((error) => {
                 if (error.message.indexOf('LIBUSB_TRANSFER_NO_DEVICE')) {
-                    console.log('Device disconnected');
+                    console.warn('Device disconnected');
                     this.close(); // got some error, make sure we close it out so we don't keep hitting this error
                 } else {
-                    console.log('Error reading data:', error);
+                    console.error('Error reading data:', error);
                 }
             }
         ).finally(async () => {
@@ -344,30 +400,62 @@ export default class ProlificUsbSerial extends EventTarget {
     }
 
     private async setFlowControl(flowControl: FlowControl) {
-            // vendorOut values from https://www.mail-archive.com/linux-usb@vger.kernel.org/msg110968.html
-            switch (flowControl) {
-                case FlowControl.NONE:
-                    if (this.deviceType === DeviceType.DEVICE_TYPE_HXN) {
-                        await this.vendorWrite(0x0a, 0xff)
-                    } else {
-                        await this.vendorWrite(0, 0)
-                    }
-                    break;
-                case FlowControl.RTS_CTS:
-                    if (this.deviceType == DeviceType.DEVICE_TYPE_HXN)
-                        await this.vendorWrite(0x0a, 0xfa);
-                    else
-                        await this.vendorWrite(0, 0x61);
-                    break;
-                case FlowControl.XON_XOFF_INLINE:
-                    if (this.deviceType == DeviceType.DEVICE_TYPE_HXN)
-                        await this.vendorWrite(0x0a, 0xee);
-                    else
-                        await this.vendorWrite(0, 0xc1);
-                    break;
-                default:
-                    throw `Unsupported flow control: ${flowControl}`
-            }
-            this.currentFlowControl = flowControl;
+        console.log(`setFlowControl ${flowControl}`)
+        // vendorOut values from https://www.mail-archive.com/linux-usb@vger.kernel.org/msg110968.html
+        switch (flowControl) {
+            case FlowControl.NONE:
+                if (this.deviceType === DeviceType.DEVICE_TYPE_HXN) {
+                    await this.vendorWrite(0x0a, 0xff)
+                } else {
+                    await this.vendorWrite(0, 0)
+                }
+                break;
+            case FlowControl.RTS_CTS:
+                if (this.deviceType == DeviceType.DEVICE_TYPE_HXN)
+                    await this.vendorWrite(0x0a, 0xfa);
+                else
+                    await this.vendorWrite(0, 0x61);
+                break;
+            case FlowControl.XON_XOFF_INLINE:
+                if (this.deviceType == DeviceType.DEVICE_TYPE_HXN)
+                    await this.vendorWrite(0x0a, 0xee);
+                else
+                    await this.vendorWrite(0, 0xc1);
+                break;
+            default:
+                throw `Unsupported flow control: ${flowControl}`
         }
+        this.currentFlowControl = flowControl;
+    }
+
+    public async setDTR(value:boolean) {
+        let newControlLines:number;
+        if(value) {
+            newControlLines = this.currentControlLinesValue | CONTROL_DTR
+        } else {
+            newControlLines = this.currentControlLinesValue & ~CONTROL_DTR
+        }
+        await this.setControlLines(newControlLines)
+    }
+
+    public async setRTS(value:boolean) {
+        let newControlLines:number;
+        if(value) {
+            newControlLines = this.currentControlLinesValue | CONTROL_RTS
+        } else {
+            newControlLines = this.currentControlLinesValue & ~CONTROL_RTS
+        }
+        await this.setControlLines(newControlLines)
+    }
+
+    private async setControlLines(newControlLinesValue: number) {
+        await this.controlTransferOutWithTimeout({
+            requestType:"standard",
+            recipient:"device",
+            request:SET_CONTROL_REQUEST,
+            value:newControlLinesValue,
+            index:0,
+            data:undefined})
+        this.currentControlLinesValue = newControlLinesValue
+    }
 }
