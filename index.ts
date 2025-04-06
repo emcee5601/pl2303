@@ -334,7 +334,8 @@ export default class ProlificUsbSerial extends EventTarget {
         }).catch((error) => {
                 if (error.message.indexOf('LIBUSB_TRANSFER_NO_DEVICE')) {
                     console.warn('Device disconnected');
-                    this.close(); // got some error, make sure we close it out so we don't keep hitting this error
+                    this.dispatchEvent(new Event('disconnected'));
+                    this.isClosing = true; // flag this so we don't keep hitting this error
                 } else {
                     console.error('Error reading data:', error);
                 }
@@ -348,6 +349,7 @@ export default class ProlificUsbSerial extends EventTarget {
 
     async close() {
         this.isClosing = true;
+        this.dispatchEvent(new Event('disconnected'));
         return new Promise<void>((resolve, reject) => {
             setTimeout(async () => {
                 try {
