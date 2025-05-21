@@ -56,7 +56,7 @@ export default class ProlificUsbSerial extends EventTarget {
     private writeEndpoint: USBEndpoint | undefined;
     private deviceType: DeviceType = DeviceType.DEVICE_TYPE_HX;
     private currentFlowControl: FlowControl = FlowControl.NONE;
-    private currentControlLinesValue: number = 0;
+    private currentControlLinesValue: number = CONTROL_RTS | CONTROL_DTR;
 
     constructor(device: USBDevice, opts: { baudRate: number }) {
         super();
@@ -292,8 +292,8 @@ export default class ProlificUsbSerial extends EventTarget {
 
             await this.resetDevice()
             await this.doBlackMagic()
-            await this.setFlowControl(this.currentFlowControl)
             await this.setControlLines(this.currentControlLinesValue)
+            await this.setFlowControl(this.currentFlowControl)
             await this.setBaudRate(this.bitrate);
 
             this.isClosing = false;
@@ -452,8 +452,8 @@ export default class ProlificUsbSerial extends EventTarget {
 
     private async setControlLines(newControlLinesValue: number) {
         await this.controlTransferOutWithTimeout({
-            requestType:"standard",
-            recipient:"device",
+            requestType:"class",
+            recipient:"interface",
             request:SET_CONTROL_REQUEST,
             value:newControlLinesValue,
             index:0,
