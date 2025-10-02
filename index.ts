@@ -39,6 +39,25 @@ const FLUSH_TX_REQUEST = 0x09;
 const RESET_HXN_RX_PIPE = 1;
 const RESET_HXN_TX_PIPE = 2;
 
+/* GET_CONTROL_REQUEST */
+const GET_CONTROL_REQUEST = 0x87;
+const GET_CONTROL_FLAG_CD = 0x02;
+const GET_CONTROL_FLAG_DSR = 0x04;
+const GET_CONTROL_FLAG_RI = 0x01;
+const GET_CONTROL_FLAG_CTS = 0x08;
+
+/* GET_CONTROL_HXN_REQUEST */
+const GET_CONTROL_HXN_REQUEST = 0x80;
+const GET_CONTROL_HXN_FLAG_CD = 0x40;
+const GET_CONTROL_HXN_FLAG_DSR = 0x20;
+const GET_CONTROL_HXN_FLAG_RI = 0x80;
+const GET_CONTROL_HXN_FLAG_CTS = 0x08;
+
+/* interrupt endpoint read */
+const STATUS_FLAG_CD = 0x01;
+const STATUS_FLAG_DSR = 0x02;
+const STATUS_FLAG_RI = 0x08;
+const STATUS_FLAG_CTS = 0x80;
 
 enum DeviceType {
     DEVICE_TYPE_01,
@@ -153,13 +172,13 @@ export default class ProlificUsbSerial extends EventTarget {
 
     async vendorRead(value: number, index: number) {
         const request = this.deviceType === DeviceType.DEVICE_TYPE_HXN ? VENDOR_READ_HXN_REQUEST : VENDOR_READ_HXN_REQUEST;
-        const buffer = await this.device.controlTransferIn({
+        const buffer:USBInTransferResult = await this.device.controlTransferIn({
             requestType: 'vendor',
             recipient: 'device',
             request: request,
             value,
             index,
-        }, 1);
+        }, 1); // length seems to always be 1
 
         return buffer.data?.buffer;
     }
@@ -236,7 +255,7 @@ export default class ProlificUsbSerial extends EventTarget {
 
 
     async open() {
-        (async () => {
+        return await (async () => {
             await this.device.open();
             // assert(this.device.configuration.interfaces.length === 1);
 
@@ -297,15 +316,10 @@ export default class ProlificUsbSerial extends EventTarget {
             await this.setBaudRate(this.bitrate);
 
             this.isClosing = false;
-            await this.readLoop();
-
-            await this.setFlowControl(FlowControl.RTS_CTS)
-            await this.setControlLines(0xff) // set all the lines
-            // maybe these are needed?
-            // await this.setRTS(true) // CTS
-            // await this.setDTR(true) // DSR
-
             this.dispatchEvent(new Event('ready'));
+
+            // this needs to be last
+            await this.readLoop();
         })().catch((error) => {
             console.log('Error during PL2303 setup:', error);
             this.dispatchEvent(new CustomEvent('error', {
@@ -451,6 +465,7 @@ export default class ProlificUsbSerial extends EventTarget {
     }
 
     private async setControlLines(newControlLinesValue: number) {
+        console.log(`setting control lines to '${(newControlLinesValue >>> 0).toString(2)}'`)
         await this.controlTransferOutWithTimeout({
             requestType:"class",
             recipient:"interface",
@@ -459,5 +474,35 @@ export default class ProlificUsbSerial extends EventTarget {
             index:0,
             data:undefined})
         this.currentControlLinesValue = newControlLinesValue
+    }
+
+    async getStatus() {
+        const isHxnDevice = this.deviceType === DeviceType.DEVICE_TYPE_HXN
+        console.log(`deviceType is ${this.deviceType}, isHxnDevice? ${isHxnDevice}`)
+
+        const response: ArrayBufferLike | undefined = await this.vendorRead(isHxnDevice ? GET_CONTROL_HXN_REQUEST : GET_CONTROL_REQUEST, 0);
+        if (!response) {
+            return // todo: report error
+        }
+        const data = new Uint8Array(response)
+        const data0 = data[0]
+
+        let status:number = 0;
+        if (isHxnDevice) {
+            if ((data0 & GET_CONTROL_HXN_FLAG_CTS) == 0) status |= STATUS_FLAG_CTS;
+            if ((data0 & GET_CONTROL_HXN_FLAG_DSR) == 0) status |= STATUS_FLAG_DSR;
+            if ((data0 & GET_CONTROL_HXN_FLAG_CD) == 0) status |= STATUS_FLAG_CD;
+            if ((data0 & GET_CONTROL_HXN_FLAG_RI) == 0) status |= STATUS_FLAG_RI;
+
+        } else {
+            if ((data0 & GET_CONTROL_FLAG_CTS) == 0) status |= STATUS_FLAG_CTS;
+            if ((data0 & GET_CONTROL_FLAG_DSR) == 0) status |= STATUS_FLAG_DSR;
+            if ((data0 & GET_CONTROL_FLAG_CD) == 0) status |= STATUS_FLAG_CD;
+            if ((data0 & GET_CONTROL_FLAG_RI) == 0) status |= STATUS_FLAG_RI;
+
+        }
+
+        console.log(`pl2303 status: ${(status>>>0).toString(2)}`) // convert to 2's complement. shouldn't be needed since we should have an unsigned int
+        return status
     }
 }
